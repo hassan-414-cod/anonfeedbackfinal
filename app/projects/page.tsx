@@ -13,8 +13,8 @@ import {
   query,
   serverTimestamp,
   where,
-} from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
+} from "@/lib/local-db";
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "@/lib/local-storage";
 import {
   PlusCircle,
   MessageSquare,
@@ -33,7 +33,8 @@ import {
   ArrowBigUp,
   ArrowBigDown,
 } from "lucide-react";
-import { db, storage } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
+import { storage } from "@/lib/local-storage";
 import { useAuth } from "@/lib/auth-context";
 import {
   CATEGORIES,
@@ -268,11 +269,7 @@ function NewProject({ initialType }: { initialType: string }) {
       router.push(`/project/${created.id}`);
     } catch (err: any) {
       console.error(err);
-      setError(
-        err?.code === "storage/unauthorized"
-          ? "File upload was blocked by storage rules. The site owner needs to deploy storage.rules."
-          : err?.message || "Upload failed. Try again.",
-      );
+      setError(err?.message || "Upload failed. Try again.");
       setSubmitting(false);
       setProgress(null);
     }

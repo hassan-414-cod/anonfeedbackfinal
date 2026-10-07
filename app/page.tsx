@@ -9,7 +9,7 @@ import {
   limit,
   orderBy,
   query,
-} from "firebase/firestore";
+} from "@/lib/local-db";
 import {
   Upload,
   MessageSquare,
@@ -21,7 +21,7 @@ import {
   Flame,
   Trophy,
 } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import { ROOM_TOPICS } from "@/lib/helpers";
 import ProjectCard from "@/components/ProjectCard";

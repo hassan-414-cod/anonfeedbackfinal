@@ -7,9 +7,10 @@ import React, {
   useEffect,
   useState,
 } from "react";
-import { User, onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "./firebase";
+import { User, onAuthStateChanged, signOut } from "@/lib/local-auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "@/lib/local-db";
+import { auth } from "@/lib/local-auth";
+import { db } from "@/lib/local-db";
 import { generateHandle } from "./helpers";
 
 type AuthMode = "login" | "signup";

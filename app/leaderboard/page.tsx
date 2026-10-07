@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { collection, query, orderBy, limit, getDocs } from "@/lib/local-db";
 import { Trophy, RefreshCw, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import Avatar from "@/components/Avatar";
 

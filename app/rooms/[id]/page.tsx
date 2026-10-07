@@ -14,9 +14,9 @@ import {
   serverTimestamp,
   setDoc,
   addDoc,
-} from "firebase/firestore";
+} from "@/lib/local-db";
 import { ArrowLeft, Loader2, Send } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import { DEFAULT_ROOMS, toMillis } from "@/lib/helpers";
 import Avatar from "@/components/Avatar";

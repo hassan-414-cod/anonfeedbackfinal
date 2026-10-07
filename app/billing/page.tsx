@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc } from "@/lib/local-db";
 import { Loader2, ArrowLeft, Check } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 
 export default function BillingPage() {

@@ -10,9 +10,9 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-} from "firebase/firestore";
+} from "@/lib/local-db";
 import { Loader2, RefreshCw, ArrowBigUp, ArrowBigDown, Trash2, Star } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import { generateHandle, timeAgo, toMillis } from "@/lib/helpers";
 import Avatar from "@/components/Avatar";

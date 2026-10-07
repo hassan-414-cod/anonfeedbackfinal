@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query } from "@/lib/local-db";
 import { Search, Loader2, EyeOff, X } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
 import { CATEGORIES, toMillis } from "@/lib/helpers";
 import ProjectCard from "@/components/ProjectCard";
 

@@ -3,9 +3,9 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, serverTimestamp, setDoc } from "@/lib/local-db";
 import { ArrowRight, Loader2, MessageSquare, PlusCircle, X } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import { DEFAULT_ROOMS, ROOM_TOPICS, timeAgo, toMillis } from "@/lib/helpers";
 

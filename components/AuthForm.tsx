@@ -5,10 +5,11 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
-} from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+} from "@/lib/local-auth";
+import { doc, setDoc, serverTimestamp } from "@/lib/local-db";
 import { Loader2 } from "lucide-react";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/local-auth";
+import { db } from "@/lib/local-db";
 import { authMessage, generateHandle } from "@/lib/helpers";
 import { useAuth } from "@/lib/auth-context";
 

@@ -13,7 +13,7 @@ import {
   query,
   where,
   writeBatch,
-} from "firebase/firestore";
+} from "@/lib/local-db";
 import {
   ExternalLink,
   Loader2,
@@ -27,7 +27,7 @@ import {
   Star,
   X,
 } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import {
   FREE_REVIEWS_PER_DAY,
@@ -154,12 +154,6 @@ export default function ProjectPage() {
       setWhatsImprovable("");
       setSuggestedStep("");
       toast("Feedback submitted anonymously.", "success");
-
-      fetch("/api/notify-owner", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: id, ownerId: project.owner_user_id }),
-      }).catch(() => {});
     } catch (err) {
       console.error(err);
       setErrorMsg("Failed to submit feedback. Please try again.");
