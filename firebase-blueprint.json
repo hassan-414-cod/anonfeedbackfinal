@@ -1,0 +1,49 @@
+{
+  "development_guidelines": {
+    "handling_missing_documents": "Create documents if they don't exist.",
+    "denormalization_strategy": "Denormalize user handles in feedback.",
+    "batch_operations": "Use transactions for incrementing counts."
+  },
+  "collections": {
+    "users": {
+        "document_id": "userUID",
+        "fields": {
+            "email": { "type": "string" },
+            "anonymous_handle": { "type": "string" },
+            "builder_score": { "type": "number", "default": 0 },
+            "reviewer_score": { "type": "number", "default": 0 },
+            "created_at": { "type": "timestamp" }
+        }
+    },
+    "projects": {
+        "document_id": "auto-generated",
+        "fields": {
+            "owner_user_id": { "type": "string" },
+            "owner_handle": { "type": "string" },
+            "title": { "type": "string" },
+            "category": { "type": "string" },
+            "description": { "type": "string" },
+            "link_or_file_url": { "type": "string" },
+            "cover_image_url": { "type": "string" },
+            "upvotes": { "type": "number", "default": 0 },
+            "downvotes": { "type": "number", "default": 0 },
+            "created_at": { "type": "timestamp" }
+        }
+    },
+    "feedback": {
+        "document_id": "project_id + '_' + user_id",
+        "fields": {
+            "project_id": { "type": "string" },
+            "reviewer_user_id": { "type": "string" },
+            "reviewer_handle": { "type": "string" },
+            "vote": { "type": "string", "description": "'up' or 'down'" },
+            "whats_good": { "type": "string" },
+            "whats_improvable": { "type": "string" },
+            "suggested_next_step": { "type": "string" },
+            "has_text": { "type": "boolean" },
+            "marked_helpful": { "type": "boolean", "default": false },
+            "created_at": { "type": "timestamp" }
+        }
+    }
+  }
+}
