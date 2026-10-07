@@ -59,16 +59,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
   }, []);
 
-  const loadProfile = useCallback(async (firebaseUser: User) => {
+  const loadProfile = useCallback(async (authUser: User) => {
     try {
-      const ref = doc(db, "users", firebaseUser.uid);
+      const ref = doc(db, "users", authUser.uid);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         setUserProfile(snap.data());
       } else {
         // Self-heal: signup may have created the auth user but not the profile.
         const profile = {
-          email: firebaseUser.email || "",
+          email: authUser.email || "",
           anonymous_handle: generateHandle(),
           builder_score: 0,
           reviewer_score: 0,
@@ -84,10 +84,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        await loadProfile(firebaseUser);
+    const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
+      setUser(authUser);
+      if (authUser) {
+        await loadProfile(authUser);
       } else {
         setUserProfile(null);
       }
