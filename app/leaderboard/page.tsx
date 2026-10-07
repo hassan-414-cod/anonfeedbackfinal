@@ -1,141 +1,147 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { Trophy, RefreshCw, EyeOff } from "lucide-react";
+import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { Trophy, Star, RefreshCw } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import Avatar from "@/components/Avatar";
+
+type Tab = "builders" | "reviewers";
 
 export default function LeaderboardPage() {
-  const [activeTab, setActiveTab] = useState<"builders" | "reviewers">(
-    "builders",
-  );
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<Tab>("builders");
   const [topUsers, setTopUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchLeaderboard = async () => {
-    setLoading(true);
-    const field = activeTab === "builders" ? "builder_score" : "reviewer_score";
-    const cacheKey = `leaderboard_${activeTab}`;
+  const fetchLeaderboard = useCallback(
+    async (force = false) => {
+      setLoading(true);
+      const field = activeTab === "builders" ? "builder_score" : "reviewer_score";
+      const cacheKey = `leaderboard_${activeTab}`;
 
-    // Check cache
-    const cachedData = sessionStorage.getItem(cacheKey);
-    if (cachedData) {
-      const { timestamp, data } = JSON.parse(cachedData);
-      // 5 minutes cache
-      if (Date.now() - timestamp < 5 * 60 * 1000) {
-        setTopUsers(data);
-        setLoading(false);
-        return;
+      if (!force) {
+        try {
+          const cached = sessionStorage.getItem(cacheKey);
+          if (cached) {
+            const { timestamp, data } = JSON.parse(cached);
+            if (Date.now() - timestamp < 5 * 60 * 1000) {
+              setTopUsers(data);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch {
+          /* storage unavailable */
+        }
       }
-    }
 
-    try {
-      const q = query(
-        collection(db, "users"),
-        orderBy(field, "desc"),
-        limit(20),
-      );
-      const snapshot = await getDocs(q);
-      const lists = snapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((u) => u[field] > 0);
-      setTopUsers(lists);
-
-      // Update cache
-      sessionStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          timestamp: Date.now(),
-          data: lists,
-        }),
-      );
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+      try {
+        const snap = await getDocs(
+          query(collection(db, "users"), orderBy(field, "desc"), limit(20)),
+        );
+        const list = snap.docs
+          .map((d) => {
+            const { anonymous_handle, builder_score, reviewer_score } = d.data();
+            return { id: d.id, anonymous_handle, builder_score, reviewer_score };
+          })
+          .filter((u: any) => u[field] > 0);
+        setTopUsers(list);
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data: list }));
+        } catch {
+          /* ignore */
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [activeTab],
+  );
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchLeaderboard();
-    }, 0);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+    fetchLeaderboard();
+  }, [fetchLeaderboard]);
+
+  const field = activeTab === "builders" ? "builder_score" : "reviewer_score";
+  const medal = ["bg-acid text-black", "bg-zinc-300 text-black", "bg-orange-400 text-black"];
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-12 flex-grow">
-      <div className="flex items-center justify-between mb-8">
+    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-10 flex-grow">
+      <div className="flex items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-4xl sm:text-5xl font-black uppercase italic tracking-tighter mb-2 text-[#1A1A1A]">
-            Leaderboard
-          </h1>
-          <p className="text-gray-500 font-bold italic">
-            Top anonymous contributors shaping the community.
-          </p>
+          <div className="chip mb-3"><Trophy className="w-3 h-3" /> rep, not followers</div>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Leaderboard</h1>
+          <p className="text-fog mt-1">Top anonymous contributors shaping the community.</p>
         </div>
+        <button onClick={() => fetchLeaderboard(true)} className="btn btn-ghost" aria-label="Refresh leaderboard">
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">Refresh</span>
+        </button>
       </div>
 
-      <div className="bg-white border-4 border-black shadow-[8px_8px_0px_rgba(0,0,0,1)]">
-        <div className="flex border-b-4 border-black">
-          <button
-            onClick={() => setActiveTab("builders")}
-            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === "builders" ? "bg-black text-white hover:bg-gray-900" : "bg-white text-black hover:bg-gray-100"}`}
-          >
-            Top Builders
-          </button>
-          <button
-            onClick={() => setActiveTab("reviewers")}
-            className={`flex-1 py-4 border-l-4 border-black text-xs font-black uppercase tracking-widest transition-all ${activeTab === "reviewers" ? "bg-black text-white hover:bg-gray-900" : "bg-white text-black hover:bg-gray-100"}`}
-          >
-            Top Reviewers
-          </button>
+      <div className="card overflow-hidden">
+        <div className="grid grid-cols-2 border-b border-line">
+          {(["builders", "reviewers"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              aria-pressed={activeTab === t}
+              className={`py-4 mono text-xs uppercase tracking-widest transition-colors ${
+                activeTab === t ? "bg-acid text-black font-bold" : "text-fog hover:text-paper hover:bg-panel-2"
+              }`}
+            >
+              Top {t}
+            </button>
+          ))}
         </div>
 
-        <div className="p-0">
-          {loading ? (
-            <div className="p-16 flex justify-center text-black">
-              <RefreshCw className="h-8 w-8 animate-spin" />
-            </div>
-          ) : topUsers.length === 0 ? (
-            <div className="p-16 text-center text-xl font-black uppercase italic text-gray-500">
-              No users found.
-            </div>
-          ) : (
-            <ul className="divide-y-4 divide-black">
-              {topUsers.map((u, i) => (
-                <li
-                  key={u.id}
-                  className="p-4 sm:px-8 hover:bg-gray-50 transition-colors flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-6">
-                    <div
-                      className={`w-12 h-12 flex items-center justify-center font-black text-xl border-2 border-black shadow-[4px_4px_0px_rgba(0,0,0,1)] ${i === 0 ? "bg-[#FFE66D]" : i === 1 ? "bg-gray-300" : i === 2 ? "bg-orange-300" : "bg-white"}`}
-                    >
-                      #{i + 1}
-                    </div>
-                    <div>
-                      <div className="font-mono font-bold text-lg">
-                        {u.anonymous_handle}
-                      </div>
-                    </div>
+        {loading ? (
+          <div className="p-16 flex justify-center text-acid">
+            <RefreshCw className="h-8 w-8 animate-spin" />
+          </div>
+        ) : topUsers.length === 0 ? (
+          <div className="p-12 text-center">
+            <EyeOff className="w-9 h-9 text-fog mx-auto mb-3" />
+            <p className="font-bold mb-1">Nobody on the board yet.</p>
+            <p className="text-fog text-sm mb-5">
+              {activeTab === "builders"
+                ? "Upload a project and earn upvotes to appear here."
+                : "Leave helpful feedback and get it marked helpful to appear here."}
+            </p>
+            <Link href={activeTab === "builders" ? "/projects?tab=new" : "/feed"} className="btn btn-acid">
+              {activeTab === "builders" ? "Upload a project" : "Review something"}
+            </Link>
+          </div>
+        ) : (
+          <ul className="divide-y divide-line">
+            {topUsers.map((u, i) => (
+              <li
+                key={u.id}
+                className={`p-4 sm:px-6 flex items-center justify-between gap-3 ${user?.uid === u.id ? "bg-acid/5" : ""}`}
+              >
+                <div className="flex items-center gap-3 sm:gap-5 min-w-0">
+                  <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mono font-black shrink-0 ${medal[i] || "bg-panel-2 text-fog"}`}>
+                    {i + 1}
                   </div>
-                  <div className="flex flex-col items-center justify-center px-4">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
-                      SCORE
-                    </span>
-                    <span className="font-black text-2xl">
-                      {activeTab === "builders"
-                        ? u.builder_score
-                        : u.reviewer_score}
-                    </span>
+                  <Avatar handle={u.anonymous_handle} size={36} />
+                  <div className="mono font-bold truncate">
+                    {u.anonymous_handle}
+                    {user?.uid === u.id && <span className="text-acid ml-2 text-xs">(you)</span>}
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="mono text-[9px] uppercase tracking-widest text-fog">score</div>
+                  <div className="text-2xl font-black text-acid">{u[field]}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

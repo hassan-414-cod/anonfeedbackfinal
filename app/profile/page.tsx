@@ -1,275 +1,251 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   collection,
   query,
   where,
   getDocs,
-  orderBy,
   doc,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
+import { Loader2, RefreshCw, ArrowBigUp, ArrowBigDown, Trash2, Star } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
-import { Loader2 } from "lucide-react";
-import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+import { generateHandle, timeAgo, toMillis } from "@/lib/helpers";
+import Avatar from "@/components/Avatar";
+import Gate from "@/components/Gate";
 
 export default function ProfilePage() {
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, loading: authLoading, refreshProfile, toast } = useAuth();
 
   const [myProjects, setMyProjects] = useState<any[]>([]);
   const [myFeedbacks, setMyFeedbacks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [projectSort, setProjectSort] = useState("newest");
+  const [editingPermissionId, setEditingPermissionId] = useState<string | null>(null);
+  const [burning, setBurning] = useState(false);
 
-  const [projectSort, setProjectSort] = useState("newest"); // newest, most_feedback, most_upvoted
-  const [editingPermissionId, setEditingPermissionId] = useState<string | null>(
-    null,
-  );
-
-  const fetchMine = async () => {
+  const fetchMine = useCallback(async () => {
     if (!user) return;
     try {
-      const pQ = query(
-        collection(db, "projects"),
-        where("owner_user_id", "==", user.uid),
+      const pSnap = await getDocs(
+        query(collection(db, "projects"), where("owner_user_id", "==", user.uid)),
       );
-      const pSnap = await getDocs(pQ);
-      let projects = pSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMyProjects(pSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
-      // Fetch feedback counts
-      for (let p of projects) {
-        const fbQ = query(
-          collection(db, "feedback"),
-          where("project_id", "==", p.id),
-        );
-        const fbSnap = await getDocs(fbQ);
-        p.feedback_count = fbSnap.size;
-      }
-
-      setMyProjects(projects);
-
-      const fQ = query(
-        collection(db, "feedback"),
-        where("reviewer_user_id", "==", user.uid),
+      const fSnap = await getDocs(
+        query(collection(db, "feedback"), where("reviewer_user_id", "==", user.uid)),
       );
-      const fSnap = await getDocs(fQ);
       setMyFeedbacks(
         fSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .sort((a: any, b: any) => b.created_at - a.created_at),
+          .map((d) => ({ id: d.id, ...d.data() }) as any)
+          .sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at)),
       );
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchMine();
-    }, 0);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    fetchMine();
+  }, [fetchMine]);
 
   const updatePermission = async (projectId: string, newPermission: string) => {
     try {
-      await updateDoc(doc(db, "projects", projectId), {
-        download_permission: newPermission,
-      });
+      await updateDoc(doc(db, "projects", projectId), { download_permission: newPermission });
       setMyProjects((prev) =>
-        prev.map((p) =>
-          p.id === projectId ? { ...p, download_permission: newPermission } : p,
-        ),
+        prev.map((p) => (p.id === projectId ? { ...p, download_permission: newPermission } : p)),
       );
       setEditingPermissionId(null);
+      toast("Permission updated.", "success");
     } catch (err) {
-      console.error("Failed to update permission", err);
+      console.error(err);
+      toast("Failed to update permission.", "error");
     }
   };
 
-  if (!user || (!loading && !userProfile)) {
+  const deleteProject = async (p: any) => {
+    if (!window.confirm(`Delete "${p.title}"? This can't be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, "projects", p.id));
+      setMyProjects((prev) => prev.filter((x) => x.id !== p.id));
+      toast("Project deleted.", "success");
+    } catch (err) {
+      console.error(err);
+      toast("Couldn't delete that project.", "error");
+    }
+  };
+
+  const burnIdentity = async () => {
+    if (!user) return;
+    if (
+      !window.confirm(
+        "Burn this identity and get a new random handle? Your old posts and reviews keep the old handle. Scores stay with your account.",
+      )
+    )
+      return;
+    setBurning(true);
+    try {
+      await updateDoc(doc(db, "users", user.uid), { anonymous_handle: generateHandle() });
+      await refreshProfile();
+      toast("New identity assigned.", "success");
+    } catch (err) {
+      console.error(err);
+      toast("Couldn't change your handle.", "error");
+    } finally {
+      setBurning(false);
+    }
+  };
+
+  if (!user) {
+    return <Gate message="Log in to see your anonymous profile." />;
+  }
+  if (authLoading || !userProfile) {
     return (
-      <div className="p-12 text-center text-xl font-black uppercase italic text-gray-500">
-        Please log in to view your profile.
+      <div className="py-24 flex justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-acid" />
       </div>
     );
   }
 
   const sortedProjects = [...myProjects].sort((a, b) => {
-    if (projectSort === "newest") {
-      return (b.created_at?.toMillis() || 0) - (a.created_at?.toMillis() || 0);
-    } else if (projectSort === "most_feedback") {
-      return (b.feedback_count || 0) - (a.feedback_count || 0);
-    } else if (projectSort === "most_upvoted") {
-      return (b.upvotes || 0) - (a.upvotes || 0);
-    }
-    return 0;
+    if (projectSort === "most_feedback") return (b.feedback_count || 0) - (a.feedback_count || 0);
+    if (projectSort === "most_upvoted") return (b.upvotes || 0) - (a.upvotes || 0);
+    return toMillis(b.created_at) - toMillis(a.created_at);
   });
 
-  return (
-    <div className="w-full flex-grow flex flex-col p-6 sm:p-8 space-y-12">
-      {/* Profile Header */}
-      <div className="bg-[#FFE66D] border-4 border-black p-8 sm:p-12 shadow-[8px_8px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row items-center md:items-start justify-between gap-8">
-        <div className="flex items-center gap-6">
-          <div className="w-24 h-24 bg-white border-4 border-black shadow-[4px_4px_0px_rgba(0,0,0,1)] flex items-center justify-center text-5xl font-black uppercase italic">
-            {userProfile?.anonymous_handle?.[0]}
-          </div>
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-[#1A1A1A] mb-2">
-              Current Identity
-            </div>
-            <h1 className="text-4xl sm:text-5xl font-black uppercase italic tracking-tighter text-[#1A1A1A] leading-none">
-              {userProfile?.anonymous_handle}
-            </h1>
+  const isPro = userProfile.subscription_status === "active";
 
-            {/* Subscription and Upload Limits Info */}
-            <div className="mt-4 flex gap-4">
-              <span className="text-xs font-bold bg-white border-2 border-black px-2 py-1 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-                Plan:{" "}
-                {userProfile?.subscription_status === "active" ? "PRO" : "FREE"}
+  return (
+    <div className="w-full flex-grow flex flex-col px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className="card p-6 sm:p-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative overflow-hidden">
+        <div className="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-ghost/25 blur-3xl pointer-events-none" />
+        <div className="relative flex items-center gap-5 min-w-0">
+          <Avatar handle={userProfile.anonymous_handle} size={88} square />
+          <div className="min-w-0">
+            <div className="mono text-[10px] uppercase tracking-widest text-fog mb-1">Current identity</div>
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight break-all">
+              {userProfile.anonymous_handle}
+            </h1>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className={`chip ${isPro ? "text-acid border-acid/50" : ""}`}>
+                plan: {isPro ? "pro" : "free"}
               </span>
-              <Link
-                href="/billing"
-                className="text-xs font-bold bg-white border-2 border-black px-2 py-1 shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all"
-              >
-                Manage Billing
+              <Link href="/billing" className="chip hover:text-paper hover:border-fog">
+                manage billing
               </Link>
+              <button onClick={burnIdentity} disabled={burning} className="chip hover:text-alert hover:border-alert/50">
+                <RefreshCw className={`w-3 h-3 ${burning ? "animate-spin" : ""}`} /> burn identity
+              </button>
             </div>
           </div>
         </div>
 
-        <div className="flex bg-white border-4 border-black shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-          <div className="text-center p-4 sm:px-8 border-r-4 border-black">
-            <div className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">
-              Builder Score
-            </div>
-            <div className="text-4xl font-black">
-              {userProfile?.builder_score || 0}
-            </div>
+        <div className="relative grid grid-cols-2 bg-ink/60 border border-line rounded-2xl divide-x divide-line shrink-0">
+          <div className="text-center p-4 sm:px-8">
+            <div className="mono text-[10px] uppercase tracking-widest text-fog mb-1">Builder score</div>
+            <div className="text-4xl font-black text-acid">{userProfile.builder_score || 0}</div>
           </div>
           <div className="text-center p-4 sm:px-8">
-            <div className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">
-              Helpful Score
-            </div>
-            <div className="text-4xl font-black">
-              {userProfile?.reviewer_score || 0}
-            </div>
+            <div className="mono text-[10px] uppercase tracking-widest text-fog mb-1">Helpful score</div>
+            <div className="text-4xl font-black text-violet-300">{userProfile.reviewer_score || 0}</div>
           </div>
         </div>
       </div>
 
       {loading ? (
         <div className="py-20 flex justify-center">
-          <Loader2 className="h-10 w-10 animate-spin text-black" />
+          <Loader2 className="h-10 w-10 animate-spin text-acid" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          {/* My Projects */}
-          <div className="bg-white border-4 border-black shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col">
-            <div className="bg-[#f0f0f0] border-b-4 border-black px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <h2 className="text-lg font-black uppercase tracking-tighter">
-                  My Uploads
-                </h2>
-                <span className="font-mono font-bold text-xs bg-white border border-black px-2 py-0.5">
-                  {myProjects.length}
-                </span>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* uploads */}
+          <div className="card flex flex-col overflow-hidden">
+            <div className="border-b border-line px-5 py-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <h2 className="font-black">My uploads</h2>
+                <span className="chip">{myProjects.length}</span>
               </div>
               <select
+                aria-label="Sort projects"
                 value={projectSort}
                 onChange={(e) => setProjectSort(e.target.value)}
-                className="text-xs font-bold border-2 border-black outline-none px-2 py-1 cursor-pointer"
+                className="field py-1.5 px-3 text-xs w-auto"
               >
                 <option value="newest">Newest</option>
-                <option value="most_feedback">Most Feedback</option>
-                <option value="most_upvoted">Most Upvoted</option>
+                <option value="most_feedback">Most feedback</option>
+                <option value="most_upvoted">Most upvoted</option>
               </select>
             </div>
-            <div className="p-0 overflow-y-auto max-h-[800px]">
+            <div className="overflow-y-auto max-h-[700px]">
               {sortedProjects.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 font-bold italic">
+                <div className="p-8 text-center text-fog">
                   You haven&apos;t uploaded any projects yet.{" "}
-                  <Link
-                    href="/upload"
-                    className="text-indigo-600 hover:underline"
-                  >
+                  <Link href="/projects?tab=new" className="text-acid font-bold hover:underline">
                     Upload one now.
                   </Link>
                 </div>
               ) : (
-                <ul className="divide-y-2 divide-black">
+                <ul className="divide-y divide-line">
                   {sortedProjects.map((proj) => (
-                    <li
-                      key={proj.id}
-                      className="p-6 hover:bg-gray-50 transition-colors"
-                    >
-                      <Link
-                        href={`/project/${proj.id}`}
-                        className="block mb-4 group"
-                      >
-                        <h3 className="text-xl font-bold leading-tight mb-2 group-hover:underline">
-                          {proj.title}
-                        </h3>
-                        <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                          <span>
-                            {proj.created_at?.toDate
-                              ? formatDistanceToNow(proj.created_at.toDate())
-                              : "Recently"}{" "}
-                            ago
-                          </span>
-                          {proj.file_type && (
-                            <span className="border border-gray-300 px-1 py-0.5">
-                              {proj.file_type}
-                            </span>
-                          )}
-                          <span>{proj.feedback_count || 0} Feedback</span>
-                        </div>
-                      </Link>
+                    <li key={proj.id} className="p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <Link href={`/project/${proj.id}`} className="group min-w-0">
+                          <h3 className="text-lg font-bold group-hover:text-acid truncate">{proj.title}</h3>
+                          <div className="mono text-[10px] uppercase tracking-wider text-fog mt-1 flex flex-wrap gap-x-3">
+                            <span>{timeAgo(proj.created_at)}</span>
+                            <span>{proj.feedback_count || 0} feedback</span>
+                            <span>▲ {proj.upvotes || 0}</span>
+                          </div>
+                        </Link>
+                        <button
+                          onClick={() => deleteProject(proj)}
+                          aria-label={`Delete ${proj.title}`}
+                          className="text-fog hover:text-alert p-1 shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
 
-                      <div className="flex flex-col gap-3 p-4 bg-gray-100 border-2 border-black border-dashed">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black uppercase tracking-widest">
-                            Permission:
-                          </span>
+                      {proj.file_url && (
+                        <div className="mt-3 flex items-center justify-between gap-3 p-3 bg-ink/60 border border-dashed border-line rounded-xl">
+                          <span className="mono text-[10px] uppercase tracking-widest text-fog">file access</span>
                           {editingPermissionId === proj.id ? (
                             <select
-                              className="text-xs font-bold border-2 border-black px-2 py-1 outline-none"
-                              defaultValue={
-                                proj.download_permission || "download_allowed"
-                              }
-                              onChange={(e) =>
-                                updatePermission(proj.id, e.target.value)
-                              }
+                              autoFocus
+                              className="field py-1 px-2 text-xs w-auto"
+                              defaultValue={proj.download_permission || "view_only"}
+                              onChange={(e) => updatePermission(proj.id, e.target.value)}
+                              onBlur={() => setEditingPermissionId(null)}
                             >
-                              <option value="download_allowed">
-                                Download Allowed
-                              </option>
-                              <option value="view_only">View Only</option>
+                              <option value="download_allowed">Download allowed</option>
+                              <option value="view_only">View only</option>
                               <option value="off">Off</option>
                             </select>
                           ) : (
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
                               <span className="text-xs font-bold">
                                 {proj.download_permission === "off"
                                   ? "Off"
-                                  : proj.download_permission === "view_only"
-                                    ? "View Only"
-                                    : "Download Allowed"}
+                                  : proj.download_permission === "download_allowed"
+                                    ? "Download allowed"
+                                    : "View only"}
                               </span>
                               <button
                                 onClick={() => setEditingPermissionId(proj.id)}
-                                className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
+                                className="mono text-[10px] uppercase tracking-widest text-acid hover:underline"
                               >
                                 Edit
                               </button>
                             </div>
                           )}
                         </div>
-                      </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -277,63 +253,45 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* My Feedback */}
-          <div className="bg-white border-4 border-black shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col">
-            <div className="bg-[#FFE66D] border-b-4 border-black px-6 py-4 flex items-center justify-between">
-              <h2 className="text-lg font-black uppercase tracking-tighter">
-                Reviews Given
-              </h2>
-              <span className="font-mono font-bold text-xs bg-white border border-black px-2 py-0.5">
-                {myFeedbacks.length}
-              </span>
+          {/* reviews */}
+          <div className="card flex flex-col overflow-hidden">
+            <div className="border-b border-line px-5 py-4 flex items-center justify-between">
+              <h2 className="font-black">Reviews given</h2>
+              <span className="chip">{myFeedbacks.length}</span>
             </div>
-            <div className="p-0 overflow-y-auto max-h-[800px]">
+            <div className="overflow-y-auto max-h-[700px]">
               {myFeedbacks.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 font-bold italic">
+                <div className="p-8 text-center text-fog">
                   You haven&apos;t reviewed any projects yet.{" "}
-                  <Link href="/" className="text-indigo-600 hover:underline">
+                  <Link href="/feed" className="text-acid font-bold hover:underline">
                     Browse the feed.
                   </Link>
                 </div>
               ) : (
-                <ul className="divide-y-2 divide-black">
+                <ul className="divide-y divide-line">
                   {myFeedbacks.map((fb) => (
-                    <li key={fb.id} className="p-6">
-                      <div className="flex items-start justify-between mb-4">
+                    <li key={fb.id} className="p-5">
+                      <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="flex items-center gap-3">
-                          {fb.vote === "up" ? (
-                            <div className="border-2 border-black bg-emerald-100 flex items-center justify-center font-black w-8 h-8 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-                              ▲
-                            </div>
-                          ) : (
-                            <div className="border-2 border-black bg-red-100 flex items-center justify-center font-black w-8 h-8 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-                              ▼
-                            </div>
-                          )}
-                          <span className="text-xs font-black uppercase tracking-widest text-[#1A1A1A]">
-                            Project Review
-                          </span>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${fb.vote === "up" ? "bg-acid/15 text-acid" : "bg-alert/15 text-alert"}`}>
+                            {fb.vote === "up" ? <ArrowBigUp className="w-5 h-5" /> : <ArrowBigDown className="w-5 h-5" />}
+                          </div>
+                          <span className="mono text-[11px] text-fog">{timeAgo(fb.created_at)}</span>
                         </div>
-                        <Link
-                          href={`/project/${fb.project_id}`}
-                          className="text-[10px] font-black uppercase tracking-widest border-b-2 border-black hover:opacity-70"
-                        >
-                          Go to project
+                        <Link href={`/project/${fb.project_id}`} className="text-xs font-bold text-acid hover:underline">
+                          Go to project →
                         </Link>
                       </div>
                       {fb.has_text ? (
-                        <div className="text-sm font-bold italic mb-4 line-clamp-3">
-                          &quot;{fb.whats_good || fb.whats_improvable}&quot;
-                        </div>
+                        <p className="text-sm text-paper/90 line-clamp-3">
+                          &quot;{fb.whats_good || fb.whats_improvable || fb.suggested_next_step}&quot;
+                        </p>
                       ) : (
-                        <div className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">
-                          Voted without text feedback
-                        </div>
+                        <p className="mono text-xs text-fog">voted without text feedback</p>
                       )}
-
                       {fb.marked_helpful && (
-                        <span className="text-[10px] font-black uppercase tracking-widest bg-black text-white px-2 py-1 inline-flex items-center gap-1">
-                          ★ Marked Helpful
+                        <span className="mt-3 mono text-[10px] uppercase tracking-widest bg-acid text-black px-2 py-1 rounded inline-flex items-center gap-1 font-bold">
+                          <Star className="w-3 h-3" /> Marked helpful
                         </span>
                       )}
                     </li>

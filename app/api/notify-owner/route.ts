@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
 
 export async function POST(req: NextRequest) {
   try {
     const { projectId, ownerId } = await req.json();
-    
-    // In a real app, you would:
-    // 1. Fetch owner details from Firestore to get their email address.
-    // 2. Use a service like Resend, SendGrid, or AWS SES to send the email.
-    // Example:
-    // const ownerDoc = await getDoc(doc(db, "users", ownerId));
-    // const email = ownerDoc.data()?.email;
-    // await resend.emails.send({ to: email, subject: 'New Feedback!', html: '...' });
 
-    console.log(`Mock: Email notification would be sent to owner ${ownerId} for project ${projectId}.`);
+    // Placeholder: wire up an email provider (Resend, SendGrid, SES) here.
+    // It must fetch the owner's email server-side; never expose it to clients.
+    console.log(`Notification queued for owner ${ownerId} (project ${projectId}).`);
 
     return NextResponse.json({ success: true, message: "Notification queued" });
   } catch (error: any) {

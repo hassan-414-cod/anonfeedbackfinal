@@ -1,167 +1,61 @@
 "use client";
 
-import { useState } from "react";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-} from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
-import { Loader2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import AuthForm from "./AuthForm";
 
-function generateHandle() {
-  const adjectives = [
-    "Neon",
-    "Retro",
-    "Lunar",
-    "Cyber",
-    "Cosmic",
-    "Pixel",
-    "Quantum",
-    "Crypto",
-    "Holo",
-    "Astro",
-  ];
-  const nouns = [
-    "Builder",
-    "Crafter",
-    "Hacker",
-    "Coder",
-    "Designer",
-    "Maker",
-    "Creator",
-    "Smith",
-    "Ninja",
-    "Wizard",
-  ];
-  const num = Math.floor(Math.random() * 9000) + 1000;
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  return `${adj}${noun}#${num}`;
-}
+export default function AuthModal() {
+  const { authModal, closeAuth } = useAuth();
+  const [mode, setMode] = useState<"login" | "signup">(authModal.mode);
 
-export default function AuthModal({
-  isOpen,
-  onClose,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-}) {
-  const [isLogin, setIsLogin] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setMode(authModal.mode);
+  }, [authModal.mode, authModal.open]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!authModal.open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeAuth();
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [authModal.open, closeAuth]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const cred = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password,
-        );
-        const handle = generateHandle();
-        await setDoc(doc(db, "users", cred.user.uid), {
-          email,
-          anonymous_handle: handle,
-          builder_score: 0,
-          reviewer_score: 0,
-          created_at: serverTimestamp(),
-        });
-      }
-      onClose();
-    } catch (err: any) {
-      setError(err.message || "Authentication failed.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!authModal.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-white rounded-3xl p-8 relative shadow-2xl">
+    <div
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && closeAuth()}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="fade-up w-full max-w-md card p-6 sm:p-8 relative max-h-[95vh] overflow-y-auto rounded-b-none sm:rounded-b-[1.25rem]">
         <button
-          onClick={onClose}
-          className="absolute right-6 top-6 text-gray-400 hover:text-black transition-colors"
+          onClick={closeAuth}
+          aria-label="Close"
+          className="absolute right-4 top-4 text-fog hover:text-paper"
         >
           <X className="h-6 w-6" />
         </button>
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold tracking-tight text-black mb-2">
-            {isLogin ? "Welcome Back" : "Join Anonymously"}
+        <div className="mb-6">
+          <div className="chip mb-3">
+            <span className="live-dot" /> identity {mode === "login" ? "check" : "generator"}
+          </div>
+          <h2 className="text-2xl font-black tracking-tight">
+            {mode === "login" ? "Welcome back, ghost." : "Put on the mask."}
           </h2>
-          <p className="text-gray-500 font-medium text-sm">
-            {isLogin
-              ? "Sign in to continue."
-              : "We require email for spam prevention, but your identity is never shared."}
+          <p className="text-fog text-sm mt-1">
+            {mode === "login"
+              ? "Sign in to pick up where you left off."
+              : "Email is only for spam prevention. Everyone else only ever sees your random handle."}
           </p>
         </div>
-
-        {error && (
-          <div className="bg-red-50 text-red-600 font-medium p-3 rounded-lg mb-6 text-sm">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wide text-gray-700">
-              Email
-            </label>
-            <input
-              required
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:border-gray-300 focus:ring-4 focus:ring-gray-50 transition-all font-medium"
-              placeholder="you@example.com"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wide text-gray-700">
-              Password
-            </label>
-            <input
-              required
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:border-gray-300 focus:ring-4 focus:ring-gray-50 transition-all font-medium"
-              placeholder="••••••••"
-            />
-          </div>
-          <button
-            disabled={loading}
-            className="w-full bg-[#FF5A5F] text-white font-bold rounded-xl py-3 flex justify-center items-center h-12 mt-2 transition-all hover:bg-[#ff6e72]"
-          >
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : isLogin ? (
-              "Sign In"
-            ) : (
-              "Create Account"
-            )}
-          </button>
-        </form>
-        <div className="mt-6 text-center text-sm font-medium text-gray-500">
-          {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
-          <br />
-          <button
-            type="button"
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-black font-bold mt-2 hover:underline"
-          >
-            {isLogin ? "Join now" : "Log in"}
-          </button>
-        </div>
+        <AuthForm mode={mode} onModeChange={setMode} onDone={closeAuth} />
       </div>
     </div>
   );

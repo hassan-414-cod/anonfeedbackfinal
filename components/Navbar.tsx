@@ -1,91 +1,150 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LogOut, Upload, Menu, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { LogOut, Upload } from "lucide-react";
-import AuthModal from "./AuthModal";
+import Avatar from "./Avatar";
+import Logo from "./Logo";
+
+const LINKS = [
+  { href: "/feed", label: "Feed" },
+  { href: "/projects", label: "Dashboard" },
+  { href: "/rooms", label: "Rooms" },
+  { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/about", label: "How it works" },
+];
 
 export default function Navbar() {
-  const { user, userProfile, logout } = useAuth();
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const { user, userProfile, logout, openAuth, loading } = useAuth();
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => setOpen(false), [pathname]);
+
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <>
-      <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
-          <div className="flex justify-between h-20 items-center">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 flex items-center">
-                <Link
-                  href="/"
-                  className="text-2xl font-bold tracking-tight text-black hover:opacity-80"
-                >
-                  ANON-FEEDBACK
-                </Link>
-              </div>
-              <div className="hidden sm:ml-10 sm:flex sm:space-x-8 items-center text-sm font-medium text-gray-500 uppercase tracking-wide">
-                <Link href="/feed" className="hover:text-black">
-                  Feed
-                </Link>
-                <Link href="/projects" className="hover:text-black">
-                  Projects
-                </Link>
-                <Link href="/leaderboard" className="hover:text-black">
-                  Leaderboard
-                </Link>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4 sm:space-x-6">
+    <header className="sticky top-0 z-50 bg-ink/80 backdrop-blur-xl border-b border-line">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-8 min-w-0">
+          <Logo />
+          <nav className="hidden lg:flex items-center gap-1" aria-label="Main">
+            {LINKS.map((l) => (
               <Link
-                href="/projects?tab=new"
-                className="inline-flex items-center px-4 py-2.5 text-sm font-bold bg-[#FDD85D] text-black rounded-lg hover:bg-[#FCE081] transition-colors"
+                key={l.href}
+                href={l.href}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  isActive(l.href)
+                    ? "text-acid bg-acid/10"
+                    : "text-fog hover:text-paper hover:bg-panel-2"
+                }`}
               >
-                <Upload className="w-4 h-4 mr-2" /> UPLOAD PROJECT
+                {l.label}
               </Link>
-
-              {user ? (
-                <>
-                  <div className="flex items-center space-x-4 border-l border-gray-200 pl-6 ml-2">
-                    <Link href="/profile" className="flex items-center group">
-                      <div className="text-right mr-3 hidden sm:block">
-                        <div className="text-[10px] font-medium uppercase text-gray-400">
-                          Identity
-                        </div>
-                        <div className="text-sm font-medium text-black">
-                          {userProfile?.anonymous_handle || "Loading..."}
-                        </div>
-                      </div>
-                      <div className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-600 transition-all group-hover:bg-gray-200">
-                        {userProfile?.anonymous_handle?.[0] || "?"}
-                      </div>
-                    </Link>
-                    <button
-                      onClick={logout}
-                      className="text-gray-400 hover:text-gray-900 p-2 rounded-full transition-all hover:bg-gray-100"
-                    >
-                      <LogOut className="h-5 w-5" />
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => setShowAuthModal(true)}
-                    className="hidden sm:inline-flex items-center px-5 py-2.5 text-sm font-bold bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff6e72] transition-colors"
-                  >
-                    JOIN ANONYMOUSLY
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
+            ))}
+          </nav>
         </div>
-      </nav>
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-      />
-    </>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link href="/projects?tab=new" className="btn btn-acid hidden sm:inline-flex">
+            <Upload className="w-4 h-4" /> Upload
+          </Link>
+
+          {user ? (
+            <>
+              <Link
+                href="/profile"
+                className="flex items-center gap-2 rounded-xl px-2 py-1 hover:bg-panel-2"
+                aria-label="Your profile"
+              >
+                <Avatar handle={userProfile?.anonymous_handle} size={32} />
+                <div className="hidden md:block leading-tight">
+                  <div className="mono text-[9px] uppercase tracking-widest text-fog">
+                    You are
+                  </div>
+                  <div className="text-sm font-bold">
+                    {userProfile?.anonymous_handle || "…"}
+                  </div>
+                </div>
+              </Link>
+              <button
+                onClick={logout}
+                aria-label="Log out"
+                className="hidden sm:inline-flex text-fog hover:text-paper p-2 rounded-lg hover:bg-panel-2"
+              >
+                <LogOut className="h-5 w-5" />
+              </button>
+            </>
+          ) : (
+            !loading && (
+              <>
+                <button
+                  onClick={() => openAuth("login")}
+                  className="hidden sm:inline-flex btn btn-ghost"
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={() => openAuth("signup")}
+                  className="btn bg-ghost text-white hover:brightness-110"
+                >
+                  Join
+                </button>
+              </>
+            )
+          )}
+
+          <button
+            className="lg:hidden p-2 rounded-lg text-paper hover:bg-panel-2"
+            onClick={() => setOpen((o) => !o)}
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+          >
+            {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="lg:hidden border-t border-line bg-ink fade-up">
+          <nav className="max-w-7xl mx-auto px-4 py-3 flex flex-col" aria-label="Mobile">
+            {LINKS.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`px-3 py-3 rounded-lg font-semibold ${isActive(l.href) ? "text-acid" : "text-paper"}`}
+              >
+                {l.label}
+              </Link>
+            ))}
+            <Link href="/projects?tab=new" className="px-3 py-3 rounded-lg font-semibold text-acid">
+              + Upload project
+            </Link>
+            {user ? (
+              <>
+                <Link href="/profile" className="px-3 py-3 rounded-lg font-semibold">
+                  Profile
+                </Link>
+                <button
+                  onClick={logout}
+                  className="px-3 py-3 rounded-lg font-semibold text-left text-alert"
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => openAuth("login")}
+                className="px-3 py-3 rounded-lg font-semibold text-left"
+              >
+                Log in
+              </button>
+            )}
+          </nav>
+        </div>
+      )}
+    </header>
   );
 }

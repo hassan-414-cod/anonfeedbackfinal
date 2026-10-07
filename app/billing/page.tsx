@@ -1,55 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@/lib/auth-context";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { Loader2, ArrowLeft, Check } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { doc, updateDoc } from "firebase/firestore";
+import { Loader2, ArrowLeft, Check } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth-context";
 
 export default function BillingPage() {
-  const { user, userProfile } = useAuth();
-  const router = useRouter();
+  const { user, userProfile, refreshProfile, openAuth, toast } = useAuth();
   const [loading, setLoading] = useState(false);
 
-  const handleUpgrade = async () => {
+  const setPlan = async (status: "active" | "inactive") => {
     if (!user) {
-      router.push("/login");
+      openAuth("login");
       return;
     }
     setLoading(true);
     try {
-      // In a real app, this would redirect to Paddle checkout
-      // Paddle.Checkout.open({ product: 'pro_plan_id', email: user.email, successCallback: ... })
-
-      // We will mock the success here:
-      await updateDoc(doc(db, "users", user.uid), {
-        subscription_status: "active",
-      });
-      alert("Successfully upgraded to PRO!");
-      window.location.reload();
+      // Demo checkout: no payment provider is connected yet, so no money moves.
+      await updateDoc(doc(db, "users", user.uid), { subscription_status: status });
+      await refreshProfile();
+      toast(status === "active" ? "You're on Pro (demo mode, no charge)." : "Back on the Free plan.", "success");
     } catch (err) {
       console.error(err);
-      alert("Failed to upgrade.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancel = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      // In a real app, this would hit your API to cancel via Paddle API
-      await updateDoc(doc(db, "users", user.uid), {
-        subscription_status: "inactive",
-      });
-      alert("Subscription cancelled.");
-      window.location.reload();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to cancel.");
+      toast("Couldn't change plan. Try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -57,131 +32,77 @@ export default function BillingPage() {
 
   const isPro = userProfile?.subscription_status === "active";
 
+  const free = ["Up to 5 projects", "50MB max file size", "15 reviews per day"];
+  const pro = ["Unlimited projects", "500MB max file size", "No review limit", "Pro badge on your plan"];
+
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 py-12 flex-grow">
+    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-10 flex-grow">
       <Link
         href={user ? "/profile" : "/"}
-        className="inline-flex items-center text-xs font-black tracking-widest uppercase border-b-2 border-black text-[#1A1A1A] hover:opacity-70 mb-8 transition-colors"
+        className="inline-flex items-center text-sm font-bold text-fog hover:text-acid mb-6"
       >
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to{" "}
-        {user ? "Profile" : "Home"}
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to {user ? "profile" : "home"}
       </Link>
 
-      <div className="bg-[#FFE66D] border-4 border-black p-8 sm:p-12 shadow-[8px_8px_0px_rgba(0,0,0,1)] relative mb-12">
-        <h1 className="text-3xl sm:text-5xl font-black uppercase italic tracking-tighter mb-4">
-          Billing & Plans
-        </h1>
-        {user ? (
-          <p className="text-xl font-bold">
-            Current Plan:{" "}
-            <span className="bg-white border-2 border-black px-3 py-1 ml-2">
-              {isPro ? "PRO" : "FREE"}
-            </span>
-          </p>
-        ) : (
-          <p className="text-xl font-bold">Choose a plan to get started.</p>
-        )}
+      <div className="mb-10">
+        <h1 className="text-3xl sm:text-5xl font-black tracking-tight mb-3">Plans</h1>
+        <p className="text-fog text-lg">
+          {user ? (
+            <>
+              Current plan:{" "}
+              <span className={`chip ${isPro ? "text-acid border-acid/50" : ""}`}>{isPro ? "pro" : "free"}</span>
+            </>
+          ) : (
+            "Choose a plan to get started."
+          )}
+        </p>
+        <p className="mono text-[11px] text-fog mt-3">
+          Demo mode: upgrading unlocks Pro limits instantly without a payment.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* FREE PLAN */}
-        <div
-          className={`bg-white border-4 border-black p-8 flex flex-col ${!isPro ? "shadow-[8px_8px_0px_rgba(0,0,0,1)] ring-4 ring-black ring-offset-4" : "opacity-70 shadow-[4px_4px_0px_rgba(0,0,0,1)]"}`}
-        >
-          <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">
-            Free Tier
-          </h2>
-          <div className="text-4xl font-black italic mb-6">
-            $0 <span className="text-lg text-gray-500">/mo</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className={`card p-7 flex flex-col ${!isPro && user ? "border-acid" : ""}`}>
+          <h2 className="text-2xl font-black mb-1">Free</h2>
+          <div className="text-4xl font-black mb-6">
+            $0 <span className="text-base text-fog font-medium">/mo</span>
           </div>
-
-          <ul className="space-y-4 mb-8 flex-grow">
-            <li className="flex items-center gap-3 font-bold text-sm">
-              <Check className="w-5 h-5 text-emerald-600" /> Max 5 project
-              uploads
-            </li>
-            <li className="flex items-center gap-3 font-bold text-sm">
-              <Check className="w-5 h-5 text-emerald-600" /> Max 50MB file size
-            </li>
-            <li className="flex items-center gap-3 font-bold text-sm">
-              <Check className="w-5 h-5 text-emerald-600" /> Rate limited
-              feedback (15/day)
-            </li>
+          <ul className="space-y-3 mb-8 flex-grow">
+            {free.map((f) => (
+              <li key={f} className="flex items-center gap-3 text-sm">
+                <Check className="w-5 h-5 text-acid shrink-0" /> {f}
+              </li>
+            ))}
           </ul>
-
           {!user ? (
-            <Link
-              href="/signup"
-              className="bg-white border-2 border-black text-black text-center font-black uppercase italic py-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all block"
-            >
-              Sign up for Free
-            </Link>
+            <button onClick={() => openAuth("signup")} className="btn btn-ghost">Sign up free</button>
           ) : !isPro ? (
-            <div className="bg-gray-100 border-2 border-black text-center font-black uppercase italic py-4 text-gray-500">
-              Current Plan
-            </div>
+            <div className="btn btn-ghost opacity-60 cursor-default">Current plan</div>
           ) : (
-            <button
-              disabled={loading}
-              onClick={handleCancel}
-              className="bg-white border-2 border-black text-black font-black uppercase italic py-4 hover:bg-red-100 transition-colors"
-            >
-              Downgrade to Free
+            <button disabled={loading} onClick={() => setPlan("inactive")} className="btn btn-ghost hover:border-alert hover:text-alert">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Downgrade to Free"}
             </button>
           )}
         </div>
 
-        {/* PRO PLAN */}
-        <div
-          className={`bg-[#f0f0f0] border-4 border-black p-8 flex flex-col ${isPro ? "shadow-[8px_8px_0px_rgba(0,0,0,1)] ring-4 ring-emerald-400 ring-offset-4" : "shadow-[8px_8px_0px_rgba(0,0,0,1)]"}`}
-        >
-          <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">
-            Pro Tier
-          </h2>
-          <div className="text-4xl font-black italic mb-6">
-            $9 <span className="text-lg text-gray-500">/mo</span>
+        <div className={`card p-7 flex flex-col relative overflow-hidden ${isPro ? "border-acid" : "border-ghost"}`}>
+          <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-ghost/30 blur-3xl pointer-events-none" />
+          <h2 className="text-2xl font-black mb-1 relative">Pro</h2>
+          <div className="text-4xl font-black mb-6 relative">
+            $9 <span className="text-base text-fog font-medium">/mo</span>
           </div>
-
-          <ul className="space-y-4 mb-8 flex-grow">
-            <li className="flex items-center gap-3 font-bold text-sm">
-              <Check className="w-5 h-5 text-emerald-600" /> Unlimited project
-              uploads
-            </li>
-            <li className="flex items-center gap-3 font-bold text-sm">
-              <Check className="w-5 h-5 text-emerald-600" /> Max 500MB file size
-            </li>
-            <li className="flex items-center gap-3 font-bold text-sm">
-              <Check className="w-5 h-5 text-emerald-600" /> Priority feed
-              placement
-            </li>
-            <li className="flex items-center gap-3 font-bold text-sm">
-              <Check className="w-5 h-5 text-emerald-600" /> No feedback rate
-              limit
-            </li>
+          <ul className="space-y-3 mb-8 flex-grow relative">
+            {pro.map((f) => (
+              <li key={f} className="flex items-center gap-3 text-sm">
+                <Check className="w-5 h-5 text-acid shrink-0" /> {f}
+              </li>
+            ))}
           </ul>
-
-          {!user ? (
-            <Link
-              href="/login"
-              className="bg-black border-2 border-black text-white text-center font-black uppercase italic py-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all block"
-            >
-              Log in to Upgrade
-            </Link>
-          ) : isPro ? (
-            <div className="bg-emerald-400 border-2 border-black text-center font-black uppercase italic py-4">
-              Active Plan
-            </div>
+          {isPro ? (
+            <div className="btn btn-acid cursor-default relative">Active plan</div>
           ) : (
-            <button
-              disabled={loading}
-              onClick={handleUpgrade}
-              className="bg-black border-2 border-black text-white font-black uppercase italic py-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center w-full"
-            >
-              {loading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                "Upgrade via Paddle"
-              )}
+            <button disabled={loading} onClick={() => setPlan("active")} className="btn btn-acid relative">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : user ? "Upgrade to Pro" : "Log in to upgrade"}
             </button>
           )}
         </div>
