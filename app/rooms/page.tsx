@@ -3,9 +3,8 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { collection, doc, getDocs, serverTimestamp, setDoc } from "@/lib/local-db";
+import { api } from "@/lib/api";
 import { ArrowRight, Loader2, MessageSquare, PlusCircle, X } from "lucide-react";
-import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import { DEFAULT_ROOMS, ROOM_TOPICS, timeAgo, toMillis } from "@/lib/helpers";
 
@@ -34,8 +33,7 @@ function RoomsContent() {
 
   const load = useCallback(async () => {
     try {
-      const snap = await getDocs(collection(db, "rooms"));
-      const remote = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
+      const { rooms: remote } = await api<{ rooms: any[] }>("/rooms");
       const byId = new Map(remote.map((r) => [r.id, r]));
       const merged = [
         ...DEFAULT_ROOMS.map((r) => ({ ...r, ...(byId.get(r.id) || {}) })),
@@ -83,21 +81,14 @@ function RoomsContent() {
     if (!user || !userProfile) return;
     setCreating(true);
     try {
-      const id = `${slugify(name)}-${Math.random().toString(36).slice(2, 7)}`;
-      await setDoc(doc(db, "rooms", id), {
-        name: name.trim(),
-        topic,
-        description: description.trim(),
-        created_by_uid: user.uid,
-        created_by_handle: userProfile.anonymous_handle,
-        message_count: 0,
-        created_at: serverTimestamp(),
+      const { id } = await api("/rooms", {
+        json: { name: name.trim(), topic, description: description.trim() },
       });
       toast("Room created.", "success");
       router.push(`/rooms/${id}`);
     } catch (err) {
       console.error(err);
-      toast("Couldn't create the room. Try again.", "error");
+      toast(err instanceof Error ? err.message : "Couldn't create the room. Try again.", "error");
       setCreating(false);
     }
   };

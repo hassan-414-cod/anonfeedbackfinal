@@ -3,17 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  increment,
-  query,
-  where,
-  writeBatch,
-} from "@/lib/local-db";
+import { api } from "@/lib/api";
 import {
   ExternalLink,
   Loader2,
@@ -27,7 +17,6 @@ import {
   Star,
   X,
 } from "lucide-react";
-import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import {
   FREE_REVIEWS_PER_DAY,
@@ -64,15 +53,11 @@ export default function ProjectPage() {
     if (!id) return;
     (async () => {
       try {
-        const pDoc = await getDoc(doc(db, "projects", id));
-        if (pDoc.exists()) setProject({ id: pDoc.id, ...pDoc.data() });
+        const { project } = await api(`/projects/${id}`);
+        setProject(project);
 
-        const fDocs = await getDocs(
-          query(collection(db, "feedback"), where("project_id", "==", id)),
-        );
-        const list = fDocs.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
-        list.sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at));
-        setFeedbacks(list);
+        const { feedback } = await api(`/projects/${id}/feedback`);
+        setFeedbacks(feedback);
       } catch (e) {
         console.error(e);
       } finally {
@@ -81,8 +66,8 @@ export default function ProjectPage() {
     })();
   }, [id]);
 
-  const myFeedback = user ? feedbacks.find((f) => f.reviewer_user_id === user.uid) : null;
-  const isOwner = !!user && user.uid === project?.owner_user_id;
+  const myFeedback = user ? feedbacks.find((f) => f.is_mine) : null;
+  const isOwner = !!user && !!project?.is_owner;
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,50 +85,17 @@ export default function ProjectPage() {
     setErrorMsg("");
 
     try {
-      if (userProfile.subscription_status !== "active") {
-        const mine = await getDocs(
-          query(collection(db, "feedback"), where("reviewer_user_id", "==", user.uid)),
-        );
-        const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-        const recent = mine.docs.filter((d) => toMillis(d.data().created_at) >= dayAgo);
-        if (recent.length >= FREE_REVIEWS_PER_DAY) {
-          setErrorMsg(`You've hit the free limit of ${FREE_REVIEWS_PER_DAY} reviews per 24 hours. Upgrade to Pro to remove it.`);
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      const batch = writeBatch(db);
-      const feedbackRef = doc(db, "feedback", `${id}_${user.uid}`);
-      const hasText = whatsGood.trim().length > 0 || whatsImprovable.trim().length > 0 || suggestedStep.trim().length > 0;
-      const newFb = {
-        project_id: id,
-        reviewer_user_id: user.uid,
-        reviewer_handle: userProfile.anonymous_handle,
-        vote,
-        whats_good: whatsGood.trim(),
-        whats_improvable: whatsImprovable.trim(),
-        suggested_next_step: suggestedStep.trim(),
-        has_text: hasText,
-        marked_helpful: false,
-        created_at: new Date(),
-      };
-      batch.set(feedbackRef, newFb);
-
-      batch.update(doc(db, "projects", id), {
-        [vote === "up" ? "upvotes" : "downvotes"]: increment(1),
-        feedback_count: increment(1),
+      // Limits, scores and the one-review rule are enforced server-side.
+      const { feedback: saved } = await api(`/projects/${id}/feedback`, {
+        json: {
+          vote,
+          whats_good: whatsGood,
+          whats_improvable: whatsImprovable,
+          suggested_next_step: suggestedStep,
+        },
       });
 
-      if (vote === "up" && project.owner_user_id) {
-        batch.update(doc(db, "users", project.owner_user_id), {
-          builder_score: increment(1),
-        });
-      }
-
-      await batch.commit();
-
-      setFeedbacks((prev) => [{ id: feedbackRef.id, ...newFb }, ...prev]);
+      setFeedbacks((prev) => [saved, ...prev]);
       setProject((p: any) => ({
         ...p,
         upvotes: (p.upvotes || 0) + (vote === "up" ? 1 : 0),
@@ -156,19 +108,16 @@ export default function ProjectPage() {
       toast("Feedback submitted anonymously.", "success");
     } catch (err) {
       console.error(err);
-      setErrorMsg("Failed to submit feedback. Please try again.");
+      setErrorMsg(err instanceof Error ? err.message : "Failed to submit feedback. Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleMarkHelpful = async (feedbackId: string, reviewerId: string) => {
+  const handleMarkHelpful = async (feedbackId: string) => {
     if (!isOwner) return;
     try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, "feedback", feedbackId), { marked_helpful: true });
-      batch.update(doc(db, "users", reviewerId), { reviewer_score: increment(1) });
-      await batch.commit();
+      await api(`/feedback/${feedbackId}/helpful`, { method: "POST" });
       setFeedbacks((prev) =>
         prev.map((f) => (f.id === feedbackId ? { ...f, marked_helpful: true } : f)),
       );
@@ -197,13 +146,13 @@ export default function ProjectPage() {
     if (!reportingItem || !user) return;
     setReporting(true);
     try {
-      await addDoc(collection(db, "reports"), {
-        target_type: reportingItem.type,
-        target_id: reportingItem.id,
-        project_id: id,
-        reporter_user_id: user.uid,
-        reason: reportReason,
-        created_at: new Date(),
+      await api("/reports", {
+        json: {
+          target_type: reportingItem.type,
+          target_id: reportingItem.id,
+          project_id: id,
+          reason: reportReason,
+        },
       });
       setReportingItem(null);
       toast("Report submitted. Thanks for keeping this place clean.", "success");
@@ -270,7 +219,7 @@ export default function ProjectPage() {
         {preview}
         {p.download_permission === "download_allowed" && (
           <a
-            href={p.file_url}
+            href={`${p.file_url}?download=1`}
             target="_blank"
             rel="noreferrer"
             download={p.file_name || true}
@@ -515,7 +464,7 @@ export default function ProjectPage() {
                   ) : (
                     isOwner &&
                     fb.has_text && (
-                      <button onClick={() => handleMarkHelpful(fb.id, fb.reviewer_user_id)} className="btn btn-ghost text-xs py-2">
+                      <button onClick={() => handleMarkHelpful(fb.id)} className="btn btn-ghost text-xs py-2">
                         <Star className="w-3.5 h-3.5" /> Mark as helpful
                       </button>
                     )

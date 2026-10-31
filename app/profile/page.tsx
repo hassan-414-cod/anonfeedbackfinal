@@ -2,19 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  updateDoc,
-  deleteDoc,
-} from "@/lib/local-db";
+import { api } from "@/lib/api";
 import { Loader2, RefreshCw, ArrowBigUp, ArrowBigDown, Trash2, Star } from "lucide-react";
-import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
-import { generateHandle, timeAgo, toMillis } from "@/lib/helpers";
+import { timeAgo, toMillis } from "@/lib/helpers";
 import Avatar from "@/components/Avatar";
 import Gate from "@/components/Gate";
 
@@ -31,19 +22,9 @@ export default function ProfilePage() {
   const fetchMine = useCallback(async () => {
     if (!user) return;
     try {
-      const pSnap = await getDocs(
-        query(collection(db, "projects"), where("owner_user_id", "==", user.uid)),
-      );
-      setMyProjects(pSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-
-      const fSnap = await getDocs(
-        query(collection(db, "feedback"), where("reviewer_user_id", "==", user.uid)),
-      );
-      setMyFeedbacks(
-        fSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }) as any)
-          .sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at)),
-      );
+      const [{ projects }, { feedback }] = await Promise.all([api("/me/projects"), api("/me/feedback")]);
+      setMyProjects(projects);
+      setMyFeedbacks(feedback);
     } catch (err) {
       console.error(err);
     } finally {
@@ -57,7 +38,7 @@ export default function ProfilePage() {
 
   const updatePermission = async (projectId: string, newPermission: string) => {
     try {
-      await updateDoc(doc(db, "projects", projectId), { download_permission: newPermission });
+      await api(`/projects/${projectId}`, { method: "PATCH", json: { download_permission: newPermission } });
       setMyProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, download_permission: newPermission } : p)),
       );
@@ -72,7 +53,7 @@ export default function ProfilePage() {
   const deleteProject = async (p: any) => {
     if (!window.confirm(`Delete "${p.title}"? This can't be undone.`)) return;
     try {
-      await deleteDoc(doc(db, "projects", p.id));
+      await api(`/projects/${p.id}`, { method: "DELETE" });
       setMyProjects((prev) => prev.filter((x) => x.id !== p.id));
       toast("Project deleted.", "success");
     } catch (err) {
@@ -85,13 +66,13 @@ export default function ProfilePage() {
     if (!user) return;
     if (
       !window.confirm(
-        "Burn this identity and get a new random handle? Your old posts and reviews keep the old handle. Scores stay with your account.",
+        "Burn this identity and get a new random handle? Your existing posts and reviews will show the new handle too. Scores stay with your account.",
       )
     )
       return;
     setBurning(true);
     try {
-      await updateDoc(doc(db, "users", user.uid), { anonymous_handle: generateHandle() });
+      await api("/me/handle", { method: "POST" });
       await refreshProfile();
       toast("New identity assigned.", "success");
     } catch (err) {

@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { doc, updateDoc } from "@/lib/local-db";
+import { api } from "@/lib/api";
 import { Loader2, ArrowLeft, Check } from "lucide-react";
-import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 
 export default function BillingPage() {
@@ -19,12 +18,12 @@ export default function BillingPage() {
     setLoading(true);
     try {
       // Demo checkout: no payment provider is connected yet, so no money moves.
-      await updateDoc(doc(db, "users", user.uid), { subscription_status: status });
+      await api("/me/plan", { json: { status } });
       await refreshProfile();
       toast(status === "active" ? "You're on Pro (demo mode, no charge)." : "Back on the Free plan.", "success");
     } catch (err) {
       console.error(err);
-      toast("Couldn't change plan. Try again.", "error");
+      toast(err instanceof Error ? err.message : "Couldn't change plan. Try again.", "error");
     } finally {
       setLoading(false);
     }

@@ -3,20 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import {
-  collection,
-  doc,
-  increment,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  addDoc,
-} from "@/lib/local-db";
+import { api } from "@/lib/api";
 import { ArrowLeft, Loader2, Send } from "lucide-react";
-import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import { DEFAULT_ROOMS, toMillis } from "@/lib/helpers";
 import Avatar from "@/components/Avatar";
@@ -35,34 +23,39 @@ export default function RoomPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastSent = useRef(0);
 
+  // Room details once, messages by polling (swap for WebSocket/SSE later).
   useEffect(() => {
     if (!id) return;
-    const unsubRoom = onSnapshot(
-      doc(db, "rooms", id),
-      (snap) => {
-        if (snap.exists()) {
-          setRoom({ id: snap.id, ...(DEFAULT_ROOMS.find((r) => r.id === id) || {}), ...snap.data() });
-        }
-        setRoomChecked(true);
-      },
-      () => setRoomChecked(true),
-    );
-    const unsubMsgs = onSnapshot(
-      query(collection(db, "rooms", id, "messages"), orderBy("created_at", "asc"), limit(200)),
-      (snap) => {
-        setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-      },
-      (err) => {
+    let stop = false;
+    let lastId = "0";
+
+    api(`/rooms/${id}`)
+      .then(({ room }) => !stop && setRoom(room))
+      .catch(() => !stop && setRoom(null))
+      .finally(() => !stop && setRoomChecked(true));
+
+    const poll = async (initial: boolean) => {
+      try {
+        const { messages: next } = await api(`/rooms/${id}/messages${lastId !== "0" ? `?after=${lastId}` : ""}`);
+        if (stop || !next.length) return;
+        lastId = next[next.length - 1].id;
+        setMessages((prev) => {
+          const seen = new Set(prev.map((m) => m.id));
+          return [...(initial ? [] : prev), ...next.filter((m: any) => initial || !seen.has(m.id))];
+        });
+      } catch (err) {
         console.error(err);
-        setLoading(false);
-      },
-    );
-    return () => {
-      unsubRoom();
-      unsubMsgs();
+      } finally {
+        if (!stop && initial) setLoading(false);
+      }
     };
-  }, [id]);
+    poll(true);
+    const timer = setInterval(() => poll(false), 3000);
+    return () => {
+      stop = true;
+      clearInterval(timer);
+    };
+  }, [id, user?.uid]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -79,29 +72,12 @@ export default function RoomPage() {
     lastSent.current = Date.now();
     setSending(true);
     try {
-      await addDoc(collection(db, "rooms", id, "messages"), {
-        text: body,
-        author_uid: user.uid,
-        author_handle: userProfile.anonymous_handle,
-        created_at: serverTimestamp(),
-      });
-      // keep room metadata fresh (also creates the doc for built-in rooms)
-      await setDoc(
-        doc(db, "rooms", id),
-        {
-          name: room.name,
-          topic: room.topic,
-          description: room.description || "",
-          message_count: increment(1),
-          last_message_at: serverTimestamp(),
-          ...(room.created_at ? {} : { created_at: serverTimestamp() }),
-        },
-        { merge: true },
-      ).catch(() => {});
+      const { message } = await api(`/rooms/${id}/messages`, { json: { text: body } });
+      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       setText("");
     } catch (err) {
       console.error(err);
-      toast("Message failed to send.", "error");
+      toast(err instanceof Error ? err.message : "Message failed to send.", "error");
     } finally {
       setSending(false);
     }
@@ -144,7 +120,7 @@ export default function RoomPage() {
             </div>
           ) : (
             messages.map((m) => {
-              const mine = user?.uid === m.author_uid;
+              const mine = !!m.is_mine;
               return (
                 <div key={m.id} className={`flex gap-3 ${mine ? "flex-row-reverse" : ""}`}>
                   <Avatar handle={m.author_handle} size={32} />

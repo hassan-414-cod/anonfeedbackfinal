@@ -3,18 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  serverTimestamp,
-  where,
-} from "@/lib/local-db";
-import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "@/lib/local-storage";
+import { api, upload } from "@/lib/api";
 import {
   PlusCircle,
   MessageSquare,
@@ -33,8 +22,6 @@ import {
   ArrowBigUp,
   ArrowBigDown,
 } from "lucide-react";
-import { db } from "@/lib/local-db";
-import { storage } from "@/lib/local-storage";
 import { useAuth } from "@/lib/auth-context";
 import {
   CATEGORIES,
@@ -83,12 +70,8 @@ function MyProjects({ onNew }: { onNew: () => void }) {
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const snap = await getDocs(
-        query(collection(db, "projects"), where("owner_user_id", "==", user.uid)),
-      );
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
-      list.sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at));
-      setProjects(list);
+      const { projects } = await api("/me/projects");
+      setProjects(projects);
     } catch (e) {
       console.error(e);
       toast("Couldn't load your projects.", "error");
@@ -104,10 +87,7 @@ function MyProjects({ onNew }: { onNew: () => void }) {
   const remove = async (p: any) => {
     if (!window.confirm(`Delete "${p.title}"? This can't be undone.`)) return;
     try {
-      await deleteDoc(doc(db, "projects", p.id));
-      if (p.file_path) {
-        deleteObject(ref(storage, p.file_path)).catch(() => {});
-      }
+      await api(`/projects/${p.id}`, { method: "DELETE" });
       setProjects((prev) => prev.filter((x) => x.id !== p.id));
       toast("Project deleted.", "success");
     } catch (e) {
@@ -218,53 +198,18 @@ function NewProject({ initialType }: { initialType: string }) {
 
     setSubmitting(true);
     try {
-      if (!isPro) {
-        const mine = await getDocs(
-          query(collection(db, "projects"), where("owner_user_id", "==", user.uid)),
-        );
-        if (mine.size >= FREE_MAX_UPLOADS) {
-          setError(`Free plan allows ${FREE_MAX_UPLOADS} projects. Delete one or upgrade to Pro.`);
-          setSubmitting(false);
-          return;
-        }
-      }
+      // The Free-plan project limit, file size and file type are re-checked on the server.
+      const form = new FormData();
+      form.set("title", title.trim());
+      form.set("category", category);
+      form.set("description", description.trim());
+      form.set("type", type);
+      form.set("permission", permission);
+      if (type === "link") form.set("url", url.trim());
+      if (type === "code") form.set("code", code);
+      if (needsFile && file) form.set("file", file);
 
-      const data: Record<string, any> = {
-        owner_user_id: user.uid,
-        owner_handle: userProfile.anonymous_handle,
-        title: title.trim(),
-        category,
-        description: description.trim(),
-        type,
-        upvotes: 0,
-        downvotes: 0,
-        feedback_count: 0,
-        download_permission: permission,
-        created_at: serverTimestamp(),
-      };
-
-      if (type === "link") data.link_or_file_url = url.trim();
-      if (type === "code") data.code_snippet = code;
-
-      if (needsFile && file) {
-        const path = `projects/${user.uid}/${Date.now()}_${file.name.replace(/[^\w.\-]/g, "_")}`;
-        const task = uploadBytesResumable(ref(storage, path), file, { contentType: file.type });
-        await new Promise<void>((resolve, reject) => {
-          task.on(
-            "state_changed",
-            (s) => setProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
-            reject,
-            () => resolve(),
-          );
-        });
-        data.file_url = await getDownloadURL(task.snapshot.ref);
-        data.file_path = path;
-        data.file_name = file.name;
-        data.file_type = file.type;
-        data.file_size = file.size;
-      }
-
-      const created = await addDoc(collection(db, "projects"), data);
+      const created = await upload<{ id: string }>("/projects", form, needsFile ? setProgress : undefined);
       toast("Project published anonymously.", "success");
       router.push(`/project/${created.id}`);
     } catch (err: any) {
@@ -476,23 +421,8 @@ function History() {
     if (!user) return;
     (async () => {
       try {
-        const snap = await getDocs(
-          query(collection(db, "feedback"), where("reviewer_user_id", "==", user.uid)),
-        );
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
-        list.sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at));
-        const top = list.slice(0, 30);
-        await Promise.all(
-          top.map(async (f) => {
-            try {
-              const p = await getDoc(doc(db, "projects", f.project_id));
-              f.project_title = p.exists() ? p.data().title : "(deleted project)";
-            } catch {
-              f.project_title = "Project";
-            }
-          }),
-        );
-        setItems(top);
+        const { feedback } = await api("/me/feedback");
+        setItems(feedback.slice(0, 30));
       } catch (e) {
         console.error(e);
       } finally {

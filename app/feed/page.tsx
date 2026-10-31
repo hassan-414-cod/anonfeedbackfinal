@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, limit, orderBy, query } from "@/lib/local-db";
+import { api } from "@/lib/api";
 import { Search, Loader2, EyeOff, X } from "lucide-react";
-import { db } from "@/lib/local-db";
 import { CATEGORIES, toMillis } from "@/lib/helpers";
 import ProjectCard from "@/components/ProjectCard";
 
@@ -20,10 +19,8 @@ export default function FeedPage() {
     setLoading(true);
     setFailed(false);
     try {
-      const snap = await getDocs(
-        query(collection(db, "projects"), orderBy("created_at", "desc"), limit(100)),
-      );
-      setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const { projects } = await api("/projects?limit=100");
+      setProjects(projects);
     } catch (e) {
       console.error(e);
       setFailed(true);

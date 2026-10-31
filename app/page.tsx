@@ -2,14 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  getCountFromServer,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-} from "@/lib/local-db";
+import { api } from "@/lib/api";
 import {
   Upload,
   MessageSquare,
@@ -21,7 +14,6 @@ import {
   Flame,
   Trophy,
 } from "lucide-react";
-import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import { ROOM_TOPICS } from "@/lib/helpers";
 import ProjectCard from "@/components/ProjectCard";
@@ -35,24 +27,13 @@ export default function HomePage() {
   useEffect(() => {
     (async () => {
       try {
-        const [u, p, f] = await Promise.all([
-          getCountFromServer(collection(db, "users")),
-          getCountFromServer(collection(db, "projects")),
-          getCountFromServer(collection(db, "feedback")),
-        ]);
-        setStats({
-          users: u.data().count,
-          projects: p.data().count,
-          feedback: f.data().count,
-        });
+        setStats(await api("/stats"));
       } catch (e) {
         console.error(e);
       }
       try {
-        const snap = await getDocs(
-          query(collection(db, "projects"), orderBy("created_at", "desc"), limit(3)),
-        );
-        setRecent(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const { projects } = await api("/projects?limit=3");
+        setRecent(projects);
       } catch (e) {
         console.error(e);
       }

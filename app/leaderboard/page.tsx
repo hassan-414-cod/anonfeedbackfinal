@@ -1,17 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { collection, query, orderBy, limit, getDocs } from "@/lib/local-db";
+import { api } from "@/lib/api";
 import { Trophy, RefreshCw, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { db } from "@/lib/local-db";
 import { useAuth } from "@/lib/auth-context";
 import Avatar from "@/components/Avatar";
 
 type Tab = "builders" | "reviewers";
 
 export default function LeaderboardPage() {
-  const { user } = useAuth();
+  const { userProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>("builders");
   const [topUsers, setTopUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,15 +38,8 @@ export default function LeaderboardPage() {
       }
 
       try {
-        const snap = await getDocs(
-          query(collection(db, "users"), orderBy(field, "desc"), limit(20)),
-        );
-        const list = snap.docs
-          .map((d) => {
-            const { anonymous_handle, builder_score, reviewer_score } = d.data();
-            return { id: d.id, anonymous_handle, builder_score, reviewer_score };
-          })
-          .filter((u: any) => u[field] > 0);
+        const { users } = await api(`/leaderboard?by=${activeTab === "builders" ? "builder" : "reviewer"}`);
+        const list = users;
         setTopUsers(list);
         try {
           sessionStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data: list }));
@@ -122,7 +114,7 @@ export default function LeaderboardPage() {
             {topUsers.map((u, i) => (
               <li
                 key={u.id}
-                className={`p-4 sm:px-6 flex items-center justify-between gap-3 ${user?.uid === u.id ? "bg-acid/5" : ""}`}
+                className={`p-4 sm:px-6 flex items-center justify-between gap-3 ${userProfile?.anonymous_handle === u.id ? "bg-acid/5" : ""}`}
               >
                 <div className="flex items-center gap-3 sm:gap-5 min-w-0">
                   <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mono font-black shrink-0 ${medal[i] || "bg-panel-2 text-fog"}`}>
@@ -131,7 +123,7 @@ export default function LeaderboardPage() {
                   <Avatar handle={u.anonymous_handle} size={36} />
                   <div className="mono font-bold truncate">
                     {u.anonymous_handle}
-                    {user?.uid === u.id && <span className="text-acid ml-2 text-xs">(you)</span>}
+                    {userProfile?.anonymous_handle === u.id && <span className="text-acid ml-2 text-xs">(you)</span>}
                   </div>
                 </div>
                 <div className="text-right shrink-0">

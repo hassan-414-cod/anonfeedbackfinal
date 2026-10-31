@@ -54,6 +54,9 @@ export default function Navbar() {
 
           {user ? (
             <>
+              {user.role && user.role !== "user" && (
+                <Link href="/admin" className="hidden sm:inline-flex btn btn-ghost">Admin</Link>
+              )}
               <Link
                 href="/profile"
                 className="flex items-center gap-2 rounded-xl px-2 py-1 hover:bg-panel-2"

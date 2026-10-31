@@ -1,16 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-} from "@/lib/local-auth";
-import { doc, setDoc, serverTimestamp } from "@/lib/local-db";
+import { api } from "@/lib/api";
 import { Loader2 } from "lucide-react";
-import { auth } from "@/lib/local-auth";
-import { db } from "@/lib/local-db";
-import { authMessage, generateHandle } from "@/lib/helpers";
+import { authMessage } from "@/lib/helpers";
 import { useAuth } from "@/lib/auth-context";
 
 export default function AuthForm({
@@ -34,22 +27,11 @@ export default function AuthForm({
     setError("");
     setLoading(true);
     try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-        toast("Welcome back.", "success");
-      } else {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const handle = generateHandle();
-        await setDoc(doc(db, "users", cred.user.uid), {
-          email,
-          anonymous_handle: handle,
-          builder_score: 0,
-          reviewer_score: 0,
-          created_at: serverTimestamp(),
-        });
-        await refreshProfile();
-        toast(`Mask on. You are ${handle}.`, "success");
-      }
+      const res = await api<{ profile: { anonymous_handle: string } }>(isLogin ? "/auth/login" : "/auth/signup", {
+        json: { email, password },
+      });
+      await refreshProfile();
+      toast(isLogin ? "Welcome back." : `Mask on. You are ${res.profile.anonymous_handle}.`, "success");
       onDone();
     } catch (err: any) {
       setError(authMessage(err));
@@ -64,7 +46,7 @@ export default function AuthForm({
       return;
     }
     try {
-      await sendPasswordResetEmail(auth, email);
+      await api("/auth/password-reset", { json: { email } });
       toast("Password reset email sent.", "success");
       setError("");
     } catch (err: any) {

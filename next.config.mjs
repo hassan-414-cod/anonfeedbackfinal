@@ -4,6 +4,11 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // The browser only talks to this origin; /api/* is forwarded to the Express backend.
+  async rewrites() {
+    const backend = process.env.BACKEND_URL || "http://localhost:4000";
+    return [{ source: "/api/:path*", destination: `${backend}/api/:path*` }];
+  },
   transpilePackages: ['lucide-react'],
   images: {
     remotePatterns: [
